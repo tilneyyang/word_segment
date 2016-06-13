@@ -5,14 +5,24 @@ import sys
 
 UNK_TOKEN = '_UNK_TOKEN'
 UNK_TOKEN_ID = 0
+PAD_TOKEN = '_PAD_TOKEN'
+PAD_TOKEN_ID = 1
+
+IBO2_LABEL = {
+    'B': 0,
+    'I': 1,
+    'O': 2
+}
 
 
 def _generate_ibo2_tag(token):
     token_len = len(token)
     assert token_len > 0
-    tags = ['B']
+    if len(token) == 1:
+        return [IBO2_LABEL['O']]
+    tags = [IBO2_LABEL['B']]
     for i in xrange(token_len - 1):
-        tags.append('I')
+        tags.append(IBO2_LABEL['I'])
     return tags
 
 
@@ -40,12 +50,11 @@ def create_vocabulary(path_to_data_file, vocab_dir, vocab_size=0):
     sorted_chars = sorted(unichars.items(), key=lambda x: x[1], reverse=True)
     if vocab_size > 0:
         sorted_chars = sorted_chars[:vocab_size]
-    vocab = [UNK_TOKEN]
+    vocab = [UNK_TOKEN, PAD_TOKEN]
     for char, _ in sorted_chars:
         if len(char.strip()) > 0:
             vocab.append(char)
     vocab = dict(enumerate(vocab))
-    print vocab
     with open(vocab_file, 'w') as vf:
         for item in vocab.items():
             vf.write('%s\t%s\n' % (item[0], item[1].encode('utf8')))
@@ -53,6 +62,11 @@ def create_vocabulary(path_to_data_file, vocab_dir, vocab_size=0):
 
 
 def read_vocabulary(path_to_vocab):
+    """
+    read vocabulary from a pre-generated vocab file
+    :param path_to_vocab:
+    :return:
+    """
     if not os.path.exists(path_to_vocab):
         raise ValueError('vocab file %s not exists! please run create_vocabulary() first.' % path_to_vocab)
     with open(path_to_vocab) as vf:
@@ -65,7 +79,11 @@ def read_vocabulary(path_to_vocab):
         return vocab
 
 
-def read_data(path_to_data_file, strip_chars='',  maximum_size=0, encoding_func=_generate_ibo2_tag):
+def sentence_to_token_ids(vocab, token):
+    return [vocab[c] if c in vocab else UNK_TOKEN for c in token]
+
+
+def read_data(path_to_data_file, path_to_vocabulary, strip_chars='',  maximum_size=0, encoding_func=_generate_ibo2_tag):
     """
     read training or testing data, and generate tag for them. The data should contain one sentence per line,
     and tokens of the sentence is separated by space or tab (ur'\s+').
@@ -77,9 +95,13 @@ def read_data(path_to_data_file, strip_chars='',  maximum_size=0, encoding_func=
     """
     data = []
     count = 0
+    vocab = read_vocabulary(path_to_vocabulary)
+
     with open(path_to_data_file) as ipf:
         for line in ipf:
             line = line.strip().decode('utf8')
+            if len(line) == 0:
+                continue
             count += 1
             if strip_chars is not None and len(strip_chars) > 0:
                 if not isinstance(strip_chars, unicode):
@@ -87,13 +109,11 @@ def read_data(path_to_data_file, strip_chars='',  maximum_size=0, encoding_func=
                 line = line.strip(strip_chars)
             tokens = re.split(ur'\s+', line)
             all_tags = []
-            # FIXME transform char to char ids
             all_token_chars = []
             for token in tokens:
-                all_token_chars.extend(token)
+                all_token_chars.extend(sentence_to_token_ids(vocab, token))
                 tags = encoding_func(token)
                 all_tags.extend(tags)
-                print token, tags
             # we have one tags per token char
             assert len(all_tags) == len(all_token_chars)
             data.append([all_token_chars, all_tags])
@@ -102,7 +122,7 @@ def read_data(path_to_data_file, strip_chars='',  maximum_size=0, encoding_func=
     return data
 
 
-def data_iterator(raw_data, batch_size, num_steps):
+def data_iterator(raw_data, batch_size, num_steps, encoding_func=_generate_ibo2_tag):
     """Iterate on the raw data.
 
     This generates batch_size pointers into the raw data, and allows
@@ -112,7 +132,7 @@ def data_iterator(raw_data, batch_size, num_steps):
       raw_data: one of the raw data outputs from raw_data.
       batch_size: int, the batch size.
       num_steps: int, the number of unrolls.
-
+;
     Yields:
       Pairs of the batched data, each a matrix of shape [batch_size, num_steps].
       The second element of the tuple is the same data time-shifted to the
@@ -121,24 +141,28 @@ def data_iterator(raw_data, batch_size, num_steps):
     Raises:
       ValueError: if batch_size or num_steps are too high.
     """
-    # FIXME: fix bugs, we need to set fixed sentence length without buckets
-    raw_data = np.array(raw_data, dtype=np.int32)
+    batch_x = np.zeros([batch_size, num_steps], dtype=np.int32)
+    batch_y = np.zeros([batch_size, num_steps], dtype=np.int32)
+    for i in xrange(len(raw_data)):
+        if i != 0 and i % batch_size == 0:
+            yield batch_x, batch_y
+        data = raw_data[i]
+        x = [j for j in data[0]]
+        y = [j for j in data[1]]
+        assert len(x) == len(y)
+        # pad the sentence
+        if len(x) < num_steps:
+            for j in xrange(num_steps - len(x)):
+                x.append(PAD_TOKEN_ID)
+                y.extend(encoding_func([PAD_TOKEN]))
+        batch_x[i % batch_size] = x[:num_steps]
+        batch_y[i % batch_size] = y[:num_steps]
 
-    data_len = len(raw_data)
-    batch_len = data_len // batch_size
-    data = np.zeros([batch_size, batch_len], dtype=np.int32)
-    for i in range(batch_size):
-        data[i] = raw_data[batch_len * i:batch_len * (i + 1)]
-
-    epoch_size = (batch_len - 1) // num_steps
-    if epoch_size == 0:
-        raise ValueError("epoch_size == 0, decrease batch_size or num_steps")
-
-    for i in range(epoch_size):
-        x = data[:, i*num_steps:(i+1)*num_steps]
-        y = data[:, i*num_steps+1:(i+1)*num_steps+1]
-        yield (x, y)
 
 if __name__ == '__main__':
     vocab_path = create_vocabulary('test', './')
-    print read_vocabulary(vocab_path)
+    data = read_data('test', vocab_path)
+    for i, j in read_vocabulary(vocab_path).items():
+        print i, j
+    for x, y in data_iterator(data, 2, 5):
+        print x, y

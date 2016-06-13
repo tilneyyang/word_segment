@@ -56,6 +56,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import time
 
 import numpy as np
@@ -63,14 +64,13 @@ import tensorflow as tf
 
 import data_utils
 
-
 flags = tf.flags
 logging = tf.logging
 
 flags.DEFINE_string(
-        "model", "small",
-        "A type of model. Possible options are: small, medium, large.")
-flags.DEFINE_string("data_path", None, "data_path")
+        "model", "large",
+        "A type of model. Possible options are: large.")
+flags.DEFINE_string("data_dir", None, "data_dir")
 
 FLAGS = flags.FLAGS
 
@@ -224,8 +224,7 @@ def run_epoch(session, m, data, eval_op, verbose=False):
                                       m.initial_state: state})
         costs += cost
         iters += m.num_steps
-
-        if verbose and step % (epoch_size // 10) == 10:
+        if verbose and step % (epoch_size // 10) == 2:
             print("%.3f perplexity: %.3f speed: %.0f wps" %
                   (step * 1.0 / epoch_size, np.exp(costs / iters),
                    iters * m.batch_size / (time.time() - start_time)))
@@ -243,11 +242,13 @@ def get_config():
 
 
 def main(_):
-    if not FLAGS.data_path:
-        raise ValueError("Must set --data_path to PTB data directory")
+    if not FLAGS.data_dir:
+        raise ValueError("Must set --data_dir to data directory")
 
-    raw_data = data_utils.read_data(FLAGS.data_path)
-    train_data, valid_data, test_data, _ = raw_data
+    vocab_path = data_utils.create_vocabulary(os.path.join(FLAGS.data_dir, 'train'), FLAGS.data_dir)
+    train_data = data_utils.read_data(os.path.join(FLAGS.data_dir, 'train'), vocab_path)
+    valid_data = data_utils.read_data(os.path.join(FLAGS.data_dir, 'dev'), vocab_path)
+    test_data = valid_data
 
     config = get_config()
     eval_config = get_config()
