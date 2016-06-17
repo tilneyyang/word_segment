@@ -16,5 +16,6 @@ flags.DEFINE_string("train_dir", 'YOU_TRAINING_DIR', "train_dir")
 2. run ```python word_seg.py ```
 
 Notice:
-1. Most of the codes are token from the [Tensorflow RNN example](https://www.tensorflow.org/versions/r0.9/tutorials/recurrent/index.html#recurrent-neural-networks);
-2. There are some sample data in `data/`, use of them should keep to [their liscense](http://sighan.cs.uchicago.edu/bakeoff2005/).
+
+  1. Most of the codes are token from the [Tensorflow RNN example](https://www.tensorflow.org/versions/r0.9/tutorials/recurrent/index.html#recurrent-neural-networks);
+  2. There are some sample data in `data/`, use of them should keep to [their liscense](http://sighan.cs.uchicago.edu/bakeoff2005/).
