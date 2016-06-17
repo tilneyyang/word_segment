@@ -80,7 +80,7 @@ def read_vocabulary(path_to_vocab):
 
 
 def sentence_to_token_ids(vocab, token):
-    return [vocab[c] if c in vocab else UNK_TOKEN for c in token]
+    return [vocab[c] if c in vocab else UNK_TOKEN_ID for c in token]
 
 
 def read_data(path_to_data_file, path_to_vocabulary, strip_chars='',  maximum_size=0, encoding_func=_generate_ibo2_tag):
@@ -155,9 +155,11 @@ def data_iterator(raw_data, batch_size, num_steps, encoding_func=_generate_ibo2_
             for j in xrange(num_steps - len(x)):
                 x.append(PAD_TOKEN_ID)
                 y.extend(encoding_func([PAD_TOKEN]))
-        batch_x[i % batch_size] = x[:num_steps]
-        batch_y[i % batch_size] = y[:num_steps]
-
+        try:
+            batch_x[i % batch_size] = x[:num_steps]
+            batch_y[i % batch_size] = y[:num_steps]
+        except Exception, e:
+            print ''
 
 if __name__ == '__main__':
     vocab_path = create_vocabulary('test', './')

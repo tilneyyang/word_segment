@@ -61,6 +61,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.platform import gfile
 
 import data_utils
 
@@ -70,7 +71,8 @@ logging = tf.logging
 flags.DEFINE_string(
         "model", "large",
         "A type of model. Possible options are: large.")
-flags.DEFINE_string("data_dir", None, "data_dir")
+flags.DEFINE_string("data_dir", '/data/wordseg', "data_dir")
+flags.DEFINE_string("train_dir", '/data/wordseg/training', "train_dir")
 
 FLAGS = flags.FLAGS
 
@@ -81,8 +83,10 @@ class PTBModel(object):
     def __init__(self, is_training, config):
         self.batch_size = batch_size = config.batch_size
         self.num_steps = num_steps = config.num_steps
+        self.is_training = is_training
         size = config.hidden_size
         vocab_size = config.vocab_size
+        self.global_step = tf.Variable(0, trainable=False)
 
         self._input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
         self._targets = tf.placeholder(tf.int32, [batch_size, num_steps])
@@ -142,7 +146,7 @@ class PTBModel(object):
         grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
                                           config.max_grad_norm)
         optimizer = tf.train.GradientDescentOptimizer(self.lr)
-        self._train_op = optimizer.apply_gradients(zip(grads, tvars))
+        self._train_op = optimizer.apply_gradients(zip(grads, tvars), global_step=self.global_step)
         self.saver = tf.train.Saver(tf.all_variables())
 
     def assign_lr(self, session, lr_value):
@@ -186,7 +190,7 @@ class LargeConfig(object):
     num_steps = 35
     hidden_size = 1000
     max_epoch = 14
-    max_max_epoch = 55
+    max_max_epoch = 300
     keep_prob = 0.35
     lr_decay = 1 / 1.15
     batch_size = 64
@@ -211,7 +215,7 @@ class TestConfig(object):
 
 def run_epoch(session, m, data, eval_op, verbose=False):
     """Runs the model on the given data."""
-    epoch_size = ((len(data) // m.batch_size) - 1) // m.num_steps
+    epoch_size = len(data) // m.batch_size
     start_time = time.time()
     costs = 0.0
     iters = 0
@@ -224,10 +228,14 @@ def run_epoch(session, m, data, eval_op, verbose=False):
                                       m.initial_state: state})
         costs += cost
         iters += m.num_steps
-        if verbose and step % (epoch_size // 10) == 2:
-            print("%.3f perplexity: %.3f speed: %.0f wps" %
-                  (step * 1.0 / epoch_size, np.exp(costs / iters),
+        if verbose and step % 1 == 0:
+            print("current step: %s, %.3f perplexity: %.3f speed: %.0f wps" %
+                  (m.global_step.eval(), step * 1.0 / epoch_size, np.exp(costs / iters),
                    iters * m.batch_size / (time.time() - start_time)))
+
+            if m.is_training:
+                print ('dumping model..')
+                m.saver.save(session, os.path.join(FLAGS.train_dir, "word_seg.ckpt"), global_step=m.global_step)
 
     return np.exp(costs / iters)
 
@@ -264,7 +272,13 @@ def main(_):
             mvalid = PTBModel(is_training=False, config=config)
             mtest = PTBModel(is_training=False, config=eval_config)
 
-        tf.initialize_all_variables().run()
+        ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
+        if ckpt and gfile.Exists(ckpt.model_checkpoint_path):
+            print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+            m.saver.restore(session, ckpt.model_checkpoint_path)
+        else:
+            print("Created model with fresh parameters.")
+            tf.initialize_all_variables().run()
 
         for i in range(config.max_max_epoch):
             lr_decay = config.lr_decay ** max(i - config.max_epoch, 0.0)
