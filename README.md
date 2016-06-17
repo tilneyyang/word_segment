@@ -7,7 +7,7 @@ Usage:
 ```
 # there should be two files in your data dir, train and dev.
 # both files should be one sentence per line and tokens of the
-# sentence should be seperate by single space.
+# sentence should be seperated by a single space.
 flags.DEFINE_string("data_dir", 'YOUR_DATA_DIR', "data_dir")
 
 # train dir is used to place the model dumps
