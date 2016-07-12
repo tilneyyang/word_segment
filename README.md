@@ -17,6 +17,7 @@ flags.DEFINE_string("train_dir", 'YOU_TRAINING_DIR', "train_dir")
 Result:
 
 Experiment setup: I  mixed ```WordSeg/data/icwb2-data/training/pku_training.utf8 ``` and ```WordSeg/data/icwb2-data/training/msr_training.utf8 ``` as the training data, mixed their counterparts in ```WordSeg/data/icwb2-data/gold (pku_test_gold.utf8 and msr_test_gold.utf8)``` as test data.
+
 Training: I stopped after 64035 steps
 
 eval:
